@@ -196,7 +196,7 @@
         }
 
         .message-content img {
-            max-width: 200px;
+            max-width: 300px;
             border-radius: 8px;
             margin-bottom: 8px;
             display: block;
@@ -246,6 +246,46 @@
             justify-content: center;
             flex-shrink: 0;
         }
+
+        .send-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .image-preview {
+            position: relative;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+
+        .image-preview img {
+            max-width: 200px;
+            max-height: 150px;
+            border-radius: 8px;
+            border: 2px solid #444;
+        }
+
+        .remove-image-btn {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            width: 24px;
+            height: 24px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .remove-image-btn:hover {
+            background: #cc0000;
+        }
     </style>
 </head>
 <body>
@@ -268,23 +308,36 @@
             const [input, setInput] = useState('');
             const [menuOpen, setMenuOpen] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
+            const [selectedImage, setSelectedImage] = useState(null);
+            const [selectedFile, setSelectedFile] = useState(null);
             const fileInputRef = useRef(null);
             const cameraInputRef = useRef(null);
 
             const sendMessage = async () => {
-                if (!input.trim() || isLoading) return;
+                if ((!input.trim() && !selectedImage) || isLoading) return;
                 
-                const userMessage = { text: input, sender: 'user' };
+                const userMessage = { 
+                    text: input, 
+                    image: selectedImage,
+                    sender: 'user' 
+                };
                 setMessages(prev => [...prev, userMessage]);
                 
                 const currentInput = input;
+                const currentFile = selectedFile;
                 setInput('');
+                setSelectedImage(null);
+                setSelectedFile(null);
                 setIsLoading(true);
                 
                 try {
                     const formData = new FormData();
                     formData.append('user_id', 'web_user');
-                    formData.append('message', currentInput);
+                    formData.append('message', currentInput || (currentFile ? '이미지를 분석해주세요.' : ''));
+                    
+                    if (currentFile) {
+                        formData.append('image', currentFile);
+                    }
                     
                     const response = await fetch('http://localhost:8001/chat', {
                         method: 'POST',
@@ -315,51 +368,22 @@
                 }
             };
 
-            const handleFileUpload = async (e) => {
+            const handleFileUpload = (e) => {
                 const file = e.target.files[0];
-                if (file && file.type.startsWith('image/') && !isLoading) {
+                if (file && file.type.startsWith('image/')) {
                     const reader = new FileReader();
-                    reader.onload = async (e) => {
-                        const userMessage = { text: '', image: e.target.result, sender: 'user' };
-                        setMessages(prev => [...prev, userMessage]);
-                        setIsLoading(true);
-                        
-                        try {
-                            const formData = new FormData();
-                            formData.append('user_id', 'web_user');
-                            formData.append('message', '이미지를 분석해주세요.');
-                            formData.append('image', file);
-                            
-                            const response = await fetch('http://localhost:8001/chat', {
-                                method: 'POST',
-                                body: formData
-                            });
-                            
-                            const result = await response.json();
-                            
-                            if (result.success && result.data && result.data.response) {
-                                setMessages(prev => [...prev, {
-                                    text: result.data.response,
-                                    sender: 'ai'
-                                }]);
-                            } else {
-                                setMessages(prev => [...prev, {
-                                    text: '이미지 분석에 실패했습니다.',
-                                    sender: 'ai'
-                                }]);
-                            }
-                        } catch (error) {
-                            console.error('Error:', error);
-                            setMessages(prev => [...prev, {
-                                text: '이미지 업로드에 실패했습니다.',
-                                sender: 'ai'
-                            }]);
-                        } finally {
-                            setIsLoading(false);
-                        }
+                    reader.onload = (e) => {
+                        setSelectedImage(e.target.result);
+                        setSelectedFile(file);
                     };
                     reader.readAsDataURL(file);
                 }
+                e.target.value = '';
+            };
+
+            const removeImage = () => {
+                setSelectedImage(null);
+                setSelectedFile(null);
             };
 
             const takePhoto = () => {
@@ -407,6 +431,13 @@
                     )
                 ),
                 React.createElement('div', { className: 'input-container' },
+                    selectedImage && React.createElement('div', { className: 'image-preview' },
+                        React.createElement('img', { src: selectedImage, alt: '선택된 이미지' }),
+                        React.createElement('button', {
+                            className: 'remove-image-btn',
+                            onClick: removeImage
+                        }, '×')
+                    ),
                     React.createElement('div', { className: 'input-wrapper' },
                         React.createElement('input', {
                             value: input,
@@ -417,11 +448,12 @@
                                     sendMessage();
                                 }
                             },
-                            placeholder: '오늘 어떤 도움을 드릴까요?'
+                            placeholder: selectedImage ? '이미지에 대한 메시지를 입력하세요...' : '오늘 어떤 도움을 드릴까요?'
                         }),
                         React.createElement('button', {
                             onClick: sendMessage,
-                            className: 'send-btn'
+                            className: 'send-btn',
+                            disabled: isLoading
                         }, '↑')
                     )
                 ),
