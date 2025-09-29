@@ -109,7 +109,7 @@ class BedrockAgentDietCoach:
             
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
+                "max_tokens": 1500,
                 "messages": [
                     {
                         "role": "user",
@@ -177,7 +177,7 @@ class BedrockAgentDietCoach:
             # Claude 3 Sonnet 이미지 분석을 위한 올바른 형식
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
+                "max_tokens": 1500,
                 "messages": [
                     {
                         "role": "user",
