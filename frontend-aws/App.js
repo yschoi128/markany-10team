@@ -8,25 +8,73 @@ function App() {
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!input.trim()) return;
     
-    setMessages([...messages, 
-      { text: input, sender: 'user' },
-      { text: '안녕하세요! 어떻게 도와드릴까요?', sender: 'ai' }
-    ]);
+    const userMessage = { text: input, sender: 'user' };
+    setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
+    
+    try {
+      const formData = new FormData();
+      formData.append('user_id', 'user123');
+      formData.append('message', currentInput);
+      
+      const response = await fetch('http://3.35.165.130:8001/chat', {
+        method: 'POST',
+        mode: 'cors',
+        body: formData
+      });
+      
+      const data = await response.json();
+      const aiResponse = data.data?.response || data.data?.message || data.message || '응답을 받을 수 없습니다.';
+      setMessages(prev => [...prev, { text: aiResponse, sender: 'ai' }]);
+    } catch (error) {
+      console.error('API 호출 오류 상세:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        cause: error.cause
+      });
+      console.error('전체 에러 객체:', error);
+      setMessages(prev => [...prev, { text: `서버 연결 실패: ${error.message}`, sender: 'ai' }]);
+    }
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        setMessages(prev => [...prev, 
-          { text: '', image: e.target.result, sender: 'user' },
-          { text: '이미지를 확인했습니다!', sender: 'ai' }
-        ]);
+      reader.onload = async (e) => {
+        const imageMessage = { text: '', image: e.target.result, sender: 'user' };
+        setMessages(prev => [...prev, imageMessage]);
+        
+        try {
+          const formData = new FormData();
+          formData.append('user_id', 'user123');
+          formData.append('message', '이미지를 분석해주세요');
+          formData.append('image', file);
+          
+          const response = await fetch('http://3.35.165.130:8001/chat', {
+            method: 'POST',
+            mode: 'cors',
+            body: formData
+          });
+          
+          const data = await response.json();
+          const aiResponse = data.data?.response || data.data?.message || data.message || '이미지를 처리했습니다!';
+          setMessages(prev => [...prev, { text: aiResponse, sender: 'ai' }]);
+        } catch (error) {
+          console.error('이미지 업로드 오류 상세:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            cause: error.cause
+          });
+          console.error('전체 에러 객체:', error);
+          setMessages(prev => [...prev, { text: `이미지 업로드 실패: ${error.message}`, sender: 'ai' }]);
+        }
       };
       reader.readAsDataURL(file);
     }

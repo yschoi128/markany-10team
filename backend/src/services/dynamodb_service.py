@@ -46,10 +46,10 @@ class DynamoDBService:
                 'height': {'N': str(user_profile.height)},
                 'weight': {'N': str(user_profile.weight)},
                 'health_goal': {'S': user_profile.health_goal.value},
-                'preferred_exercises': {'SS': [ex.value for ex in user_profile.preferred_exercises]},
-                'disliked_exercises': {'SS': [ex.value for ex in user_profile.disliked_exercises]},
+                'preferred_exercises': {'SS': [ex.value for ex in user_profile.preferred_exercises]} if user_profile.preferred_exercises else {'SS': ['none']},
+                'disliked_exercises': {'SS': [ex.value for ex in user_profile.disliked_exercises]} if user_profile.disliked_exercises else {'SS': ['none']},
                 'activity_level': {'S': user_profile.activity_level},
-                'dietary_restrictions': {'SS': user_profile.dietary_restrictions} if user_profile.dietary_restrictions else {'SS': []},
+                'dietary_restrictions': {'SS': user_profile.dietary_restrictions} if user_profile.dietary_restrictions else {'SS': ['none']},
                 'target_calories': {'N': str(user_profile.target_calories)} if user_profile.target_calories else {'NULL': True},
                 'created_at': {'S': format_datetime(user_profile.created_at)},
                 'updated_at': {'S': format_datetime(user_profile.updated_at)}
@@ -81,9 +81,14 @@ class DynamoDBService:
             사용자 프로필 객체 또는 None
         """
         try:
+            # 빈 문자열 검사
+            if not user_id or user_id.strip() == "":
+                logger.error(f"Invalid user_id: empty string")
+                return None
+                
             response = self.client.get_item(
                 TableName=self.user_table,
-                Key={'user_id': {'S': user_id}}
+                Key={'user_id': {'S': user_id.strip()}}
             )
             
             if 'Item' not in response:
@@ -174,14 +179,25 @@ class DynamoDBService:
                     ':end_date': {'S': format_datetime(end_date)}
                 })
             
-            response = self.client.query(
-                TableName=self.diet_table,
-                KeyConditionExpression=key_condition,
-                ExpressionAttributeValues=expression_values,
-                ExpressionAttributeNames={'#ts': 'timestamp'} if start_date and end_date else {},
-                Limit=limit,
-                ScanIndexForward=False  # 최신 순으로 정렬
-            )
+            if start_date and end_date:
+                response = self.client.scan(
+                    TableName=self.diet_table,
+                    FilterExpression='user_id = :user_id AND #ts BETWEEN :start_date AND :end_date',
+                    ExpressionAttributeValues={
+                        ':user_id': {'S': user_id},
+                        ':start_date': {'S': format_datetime(start_date)},
+                        ':end_date': {'S': format_datetime(end_date)}
+                    },
+                    ExpressionAttributeNames={'#ts': 'timestamp'},
+                    Limit=limit
+                )
+            else:
+                response = self.client.scan(
+                    TableName=self.diet_table,
+                    FilterExpression='user_id = :user_id',
+                    ExpressionAttributeValues={':user_id': {'S': user_id}},
+                    Limit=limit
+                )
             
             meals = []
             for item in response.get('Items', []):
@@ -354,10 +370,10 @@ class DynamoDBService:
             height=float(item['height']['N']),
             weight=float(item['weight']['N']),
             health_goal=HealthGoal(item['health_goal']['S']),
-            preferred_exercises=[ExerciseType(ex) for ex in item['preferred_exercises']['SS']],
-            disliked_exercises=[ExerciseType(ex) for ex in item['disliked_exercises']['SS']] if 'disliked_exercises' in item else [],
+            preferred_exercises=[ExerciseType(ex) for ex in item['preferred_exercises']['SS'] if ex != 'none'],
+            disliked_exercises=[ExerciseType(ex) for ex in item['disliked_exercises']['SS'] if ex != 'none'] if 'disliked_exercises' in item else [],
             activity_level=item['activity_level']['S'],
-            dietary_restrictions=item['dietary_restrictions']['SS'] if 'dietary_restrictions' in item else [],
+            dietary_restrictions=[dr for dr in item['dietary_restrictions']['SS'] if dr != 'none'] if 'dietary_restrictions' in item else [],
             target_calories=float(item['target_calories']['N']) if 'target_calories' in item and 'N' in item['target_calories'] else None,
             created_at=datetime.fromisoformat(item['created_at']['S']),
             updated_at=datetime.fromisoformat(item['updated_at']['S'])

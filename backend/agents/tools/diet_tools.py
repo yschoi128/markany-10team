@@ -1,313 +1,101 @@
 """
-Diet-related Tools for Agentic AI
-식단 분석, 영양소 계산 등 식단 관련 도구들
+식단 관련 도구들
 """
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+import boto3
 import base64
+import json
+from typing import Dict, Any
+from datetime import datetime
 
-from src.services.s3_service import s3_service
-from src.services.bedrock_service import bedrock_service
-from src.services.dynamodb_service import dynamodb_service
-from src.models.data_models import MealRecord, FoodItem, NutritionInfo
-from src.utils.helpers import generate_unique_id
-
-
-async def analyze_food_image(
-    user_id: str,
-    image_data: bytes,
-    meal_type: str = "식사",
-    people_count: int = 1
-) -> Dict[str, Any]:
+async def analyze_food_image_detailed(user_id: str, image_data: Any, meal_type: str = "저녁") -> Dict[str, Any]:
     """
-    음식 이미지 분석 도구
-    
-    Args:
-        user_id: 사용자 ID
-        image_data: 이미지 바이트 데이터
-        meal_type: 식사 종류
-        people_count: 함께 식사한 인원 수
-    
-    Returns:
-        분석 결과
+    음식 이미지를 상세 분석하여 메뉴, 칼로리, 영양소 계산 및 식단 조언 제공
     """
     try:
-        # 1. S3에 이미지 업로드
-        meal_id = generate_unique_id("meal")
-        image_url = await s3_service.upload_image(
-            image_data=image_data,
-            user_id=user_id,
-            filename=f"meal_{meal_id}.jpg",
-            meal_id=meal_id
-        )
+        # 이미지 데이터 처리
+        if isinstance(image_data, str):
+            # base64 문자열인 경우
+            image_bytes = base64.b64decode(image_data)
+        else:
+            # bytes인 경우
+            image_bytes = image_data
         
-        if not image_url:
-            return {"error": "이미지 업로드에 실패했습니다"}
+        # Bedrock Claude로 이미지 분석
+        bedrock_client = boto3.client('bedrock-runtime', region_name='ap-northeast-2')
         
-        # 2. Bedrock으로 음식 분석
-        food_items = await bedrock_service.analyze_food_image(
-            image_data=image_data,
-            people_count=people_count
-        )
+        # 이미지를 base64로 인코딩
+        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
         
-        if not food_items:
-            return {"error": "음식을 인식할 수 없습니다"}
-        
-        # 3. 총 영양소 계산
-        total_calories = sum(food.nutrition.calories for food in food_items)
-        total_carbs = sum(food.nutrition.carbohydrates for food in food_items)
-        total_protein = sum(food.nutrition.protein for food in food_items)
-        total_fat = sum(food.nutrition.fat for food in food_items)
-        
-        # 4. 식사 기록 생성 및 저장
-        meal_record = MealRecord(
-            user_id=user_id,
-            meal_id=meal_id,
-            timestamp=datetime.now(),
-            meal_type=meal_type,
-            image_url=image_url,
-            foods=food_items,
-            total_nutrition=NutritionInfo(
-                calories=total_calories,
-                carbohydrates=total_carbs,
-                protein=total_protein,
-                fat=total_fat
-            ),
-            people_count=people_count
-        )
-        
-        # 5. DynamoDB에 저장
-        await dynamodb_service.save_meal_record(meal_record)
-        
-        return {
-            "meal_id": meal_id,
-            "foods": [
+        # 상세 분석 프롬프트
+        analysis_prompt = f"""
+이 음식 이미지를 전문 영양사 관점에서 상세히 분석해주세요.
+
+**반드시 다음 형식으로 답변하세요:**
+
+## 🍽️ 식별된 음식 목록
+1. **[음식명1]** - [예상 분량] - [칼로리]kcal
+   - 탄수화물: [g], 단백질: [g], 지방: [g]
+2. **[음식명2]** - [예상 분량] - [칼로리]kcal
+   - 탄수화물: [g], 단백질: [g], 지방: [g]
+
+## 📊 총 영양 정보
+- **총 칼로리**: [총합]kcal
+- **탄수화물**: [총합]g
+- **단백질**: [총합]g  
+- **지방**: [총합]g
+
+## 💡 식단 평가 및 조언
+- **긍정적인 점**: [구체적 설명]
+- **개선점**: [구체적 개선 방안]
+- **추천 운동**: [소모 칼로리 기준 운동 추천]
+
+## 🏃‍♂️ 칼로리 소모 운동 추천
+이 식사([총 칼로리]kcal)를 소모하려면:
+- 빠른 걷기: [시간]분
+- 조깅: [시간]분  
+- 자전거: [시간]분
+
+가능한 한 정확하고 구체적으로 분석해주세요.
+"""
+
+        messages = [{
+            "role": "user",
+            "content": [
                 {
-                    "name": food.name,
-                    "quantity": food.quantity,
-                    "calories": food.nutrition.calories,
-                    "confidence": food.confidence
+                    "image": {
+                        "format": "jpeg",
+                        "source": {
+                            "bytes": image_bytes
+                        }
+                    }
+                },
+                {
+                    "text": analysis_prompt
                 }
-                for food in food_items
-            ],
-            "total_nutrition": {
-                "calories": total_calories,
-                "carbohydrates": total_carbs,
-                "protein": total_protein,
-                "fat": total_fat
-            },
-            "image_url": image_url,
-            "analysis_time": datetime.now().isoformat()
-        }
+            ]
+        }]
         
-    except Exception as e:
-        return {"error": f"음식 분석 중 오류 발생: {str(e)}"}
-
-
-async def get_nutrition_history(
-    user_id: str,
-    days: int = 7
-) -> Dict[str, Any]:
-    """
-    영양 섭취 기록 조회 도구
-    
-    Args:
-        user_id: 사용자 ID
-        days: 조회할 일수
-    
-    Returns:
-        영양 섭취 기록
-    """
-    try:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        
-        meals = await dynamodb_service.get_user_meals(
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date
+        response = bedrock_client.converse(
+            modelId='anthropic.claude-3-haiku-20240307-v1:0',
+            messages=messages,
+            inferenceConfig={'maxTokens': 1500}
         )
         
-        if not meals:
-            return {"message": f"최근 {days}일간 식사 기록이 없습니다"}
-        
-        # 일별 영양소 집계
-        daily_nutrition = {}
-        for meal in meals:
-            date_key = meal.timestamp.strftime("%Y-%m-%d")
-            
-            if date_key not in daily_nutrition:
-                daily_nutrition[date_key] = {
-                    "calories": 0,
-                    "carbohydrates": 0,
-                    "protein": 0,
-                    "fat": 0,
-                    "meal_count": 0
-                }
-            
-            daily_nutrition[date_key]["calories"] += meal.total_nutrition.calories
-            daily_nutrition[date_key]["carbohydrates"] += meal.total_nutrition.carbohydrates
-            daily_nutrition[date_key]["protein"] += meal.total_nutrition.protein
-            daily_nutrition[date_key]["fat"] += meal.total_nutrition.fat
-            daily_nutrition[date_key]["meal_count"] += 1
-        
-        # 평균 계산
-        total_days = len(daily_nutrition)
-        avg_calories = sum(day["calories"] for day in daily_nutrition.values()) / total_days
-        avg_protein = sum(day["protein"] for day in daily_nutrition.values()) / total_days
+        analysis_result = response['output']['message']['content'][0]['text']
         
         return {
-            "period": f"{days}일간",
-            "total_meals": len(meals),
-            "daily_nutrition": daily_nutrition,
-            "averages": {
-                "calories_per_day": round(avg_calories, 1),
-                "protein_per_day": round(avg_protein, 1),
-                "meals_per_day": round(len(meals) / total_days, 1)
-            },
-            "summary": f"최근 {days}일간 총 {len(meals)}회 식사, 일평균 {round(avg_calories, 0)}kcal 섭취"
+            "success": True,
+            "analysis": analysis_result,
+            "meal_type": meal_type,
+            "user_id": user_id,
+            "timestamp": datetime.now().isoformat(),
+            "message": f"{meal_type} 이미지 분석이 완료되었습니다."
         }
         
     except Exception as e:
-        return {"error": f"영양 기록 조회 중 오류 발생: {str(e)}"}
-
-
-async def calculate_daily_nutrition(
-    user_id: str,
-    date: str = None
-) -> Dict[str, Any]:
-    """
-    특정 날짜의 영양소 계산 도구
-    
-    Args:
-        user_id: 사용자 ID
-        date: 날짜 (YYYY-MM-DD, 기본값: 오늘)
-    
-    Returns:
-        일일 영양소 정보
-    """
-    try:
-        if date:
-            target_date = datetime.strptime(date, "%Y-%m-%d")
-        else:
-            target_date = datetime.now()
-        
-        summary = await dynamodb_service.get_daily_nutrition_summary(
-            user_id=user_id,
-            date=target_date
-        )
-        
-        if not summary:
-            return {"message": f"{target_date.strftime('%Y-%m-%d')} 식사 기록이 없습니다"}
-        
         return {
-            "date": target_date.strftime("%Y-%m-%d"),
-            "nutrition": summary.get("total_nutrition", {}),
-            "meal_count": summary.get("meal_count", 0),
-            "meals_by_type": summary.get("meals_by_type", {}),
-            "summary": f"{target_date.strftime('%m월 %d일')} 총 {summary.get('meal_count', 0)}회 식사, {summary.get('total_nutrition', {}).get('calories', 0):.0f}kcal 섭취"
+            "success": False,
+            "error": str(e),
+            "message": "이미지 분석 중 오류가 발생했습니다."
         }
-        
-    except Exception as e:
-        return {"error": f"일일 영양소 계산 중 오류 발생: {str(e)}"}
-
-
-async def save_meal_record(
-    user_id: str,
-    meal_data: Dict[str, Any]
-) -> Dict[str, Any]:
-    """
-    식사 기록 저장 도구
-    
-    Args:
-        user_id: 사용자 ID
-        meal_data: 식사 데이터
-    
-    Returns:
-        저장 결과
-    """
-    try:
-        # 식사 기록 객체 생성
-        meal_record = MealRecord(
-            user_id=user_id,
-            meal_id=generate_unique_id("meal"),
-            timestamp=datetime.now(),
-            meal_type=meal_data.get("meal_type", "식사"),
-            foods=[
-                FoodItem(
-                    name=food["name"],
-                    quantity=food["quantity"],
-                    nutrition=NutritionInfo(**food["nutrition"]),
-                    confidence=food.get("confidence", 0.8)
-                )
-                for food in meal_data.get("foods", [])
-            ],
-            total_nutrition=NutritionInfo(**meal_data.get("total_nutrition", {})),
-            people_count=meal_data.get("people_count", 1),
-            notes=meal_data.get("notes")
-        )
-        
-        # DynamoDB에 저장
-        success = await dynamodb_service.save_meal_record(meal_record)
-        
-        if success:
-            return {
-                "meal_id": meal_record.meal_id,
-                "message": "식사 기록이 저장되었습니다",
-                "timestamp": meal_record.timestamp.isoformat()
-            }
-        else:
-            return {"error": "식사 기록 저장에 실패했습니다"}
-            
-    except Exception as e:
-        return {"error": f"식사 기록 저장 중 오류 발생: {str(e)}"}
-
-
-def get_nutrition_recommendations(
-    current_nutrition: Dict[str, float],
-    target_nutrition: Dict[str, float]
-) -> Dict[str, Any]:
-    """
-    영양소 기반 추천 도구
-    
-    Args:
-        current_nutrition: 현재 섭취 영양소
-        target_nutrition: 목표 영양소
-    
-    Returns:
-        영양소 추천
-    """
-    try:
-        recommendations = []
-        
-        # 칼로리 분석
-        calorie_diff = target_nutrition.get("calories", 0) - current_nutrition.get("calories", 0)
-        if calorie_diff > 100:
-            recommendations.append(f"칼로리를 {calorie_diff:.0f}kcal 더 섭취하세요")
-        elif calorie_diff < -100:
-            recommendations.append(f"칼로리를 {abs(calorie_diff):.0f}kcal 줄이세요")
-        
-        # 단백질 분석
-        protein_diff = target_nutrition.get("protein", 0) - current_nutrition.get("protein", 0)
-        if protein_diff > 10:
-            recommendations.append(f"단백질을 {protein_diff:.0f}g 더 섭취하세요 (닭가슴살, 계란, 두부 추천)")
-        
-        # 탄수화물 분석
-        carb_diff = target_nutrition.get("carbohydrates", 0) - current_nutrition.get("carbohydrates", 0)
-        if carb_diff > 20:
-            recommendations.append(f"탄수화물을 {carb_diff:.0f}g 더 섭취하세요 (현미, 고구마 추천)")
-        elif carb_diff < -20:
-            recommendations.append(f"탄수화물을 {abs(carb_diff):.0f}g 줄이세요")
-        
-        if not recommendations:
-            recommendations.append("현재 영양 섭취가 목표에 적합합니다!")
-        
-        return {
-            "recommendations": recommendations,
-            "calorie_status": "적정" if abs(calorie_diff) <= 100 else ("부족" if calorie_diff > 0 else "과다"),
-            "protein_status": "적정" if abs(protein_diff) <= 10 else ("부족" if protein_diff > 0 else "과다")
-        }
-        
-    except Exception as e:
-        return {"error": f"영양소 추천 생성 중 오류 발생: {str(e)}"}
