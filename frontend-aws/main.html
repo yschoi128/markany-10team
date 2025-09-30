@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI PT 쌤</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #1a1a1a; color: #e0e0e0; }
+        .container { max-width: 800px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; background: #2a2a2a; }
+        .header { padding: 20px; background: #1f1f1f; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 24px; }
+        .menu-btn { background: none; border: none; color: #e0e0e0; font-size: 20px; cursor: pointer; padding: 8px; }
+        .messages { flex: 1; overflow-y: auto; padding: 20px; }
+        .message { margin-bottom: 15px; display: flex; }
+        .message.user { justify-content: flex-end; }
+        .message.ai { justify-content: flex-start; }
+        .message-content { max-width: 70%; padding: 12px 16px; border-radius: 18px; line-height: 1.5; }
+        .message-content p { margin: 0.5em 0; }
+        .message-content ul { margin: 0.5em 0; padding-left: 1.5em; }
+        .message-content li { margin: 0.2em 0; }
+        .message-content strong { font-weight: 600; }
+        .message-content em { font-style: italic; }
+        .message-content code { background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 3px; font-family: monospace; }
+        .user .message-content { background: #4a90e2; color: white; }
+        .ai .message-content { background: #3a3a3a; color: #e0e0e0; }
+        .input-area { padding: 20px; border-top: 1px solid #333; }
+        .input-wrapper { display: flex; background: #1a1a1a; border-radius: 25px; border: 1px solid #444; }
+        .input-wrapper input { flex: 1; background: transparent; border: none; padding: 16px 20px; color: #e0e0e0; outline: none; }
+        .input-wrapper input::placeholder { color: #888; }
+        .send-btn { width: 40px; height: 40px; background: #4a90e2; border: none; border-radius: 50%; color: white; cursor: pointer; margin: 4px; }
+        .send-btn:disabled { background: #666; }
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: #2a2a2a; padding: 30px; border-radius: 12px; width: 400px; max-width: 90vw; }
+        .modal-content h2 { margin-bottom: 20px; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #444; border-radius: 6px; color: #e0e0e0; }
+        .buttons { display: flex; gap: 10px; margin-top: 20px; }
+        .btn { flex: 1; padding: 12px; border: none; border-radius: 6px; cursor: pointer; }
+        .btn-cancel { background: #666; color: white; }
+        .btn-save { background: #4a90e2; color: white; }
+        .image-preview { margin-bottom: 10px; position: relative; display: inline-block; }
+        .image-preview img { max-width: 200px; border-radius: 8px; }
+        .remove-btn { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; background: #ff4444; color: white; border: none; border-radius: 50%; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 AI PT 쌤</h1>
+            <button class="menu-btn" onclick="showSettings()">⚙️</button>
+        </div>
+        
+        <div class="messages" id="messages">
+            <!-- 메시지들이 여기에 표시됩니다 --> 
+        </div>
+        
+        <div class="input-area">
+            <div id="imagePreview"></div>
+            <div class="input-wrapper">
+                <input type="text" id="messageInput" placeholder="메시지를 입력하세요..." onkeypress="handleKeyPress(event)">
+                <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+                <button onclick="document.getElementById('fileInput').click()" style="background:none;border:none;color:#888;font-size:20px;padding:8px;cursor:pointer;" title="이미지 첨부">📎</button>
+                <button class="send-btn" onclick="sendMessage()" id="sendBtn" title="전송">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 설정 모달 -->
+    <div id="settingsModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2>프로필 설정</h2>
+            <div class="form-group">
+                <label>이름</label>
+                <input type="text" id="userName" placeholder="이름을 입력하세요">
+            </div>
+            <div class="form-group">
+                <label>나이</label>
+                <input type="number" id="userAge" placeholder="나이를 입력하세요">
+            </div>
+            <div class="form-group">
+                <label>성별</label>
+                <select id="userGender">
+                    <option value="">선택하세요</option>
+                    <option value="male">남성</option>
+                    <option value="female">여성</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>키 (cm)</label>
+                <input type="number" id="userHeight" placeholder="키를 입력하세요">
+            </div>
+            <div class="form-group">
+                <label>체중 (kg)</label>
+                <input type="number" id="userWeight" placeholder="체중을 입력하세요">
+            </div>
+            <div class="form-group">
+                <label>목표</label>
+                <select id="userGoal">
+                    <option value="health_maintenance">건강 유지</option>
+                    <option value="weight_loss">체중 감량</option>
+                    <option value="muscle_gain">근육 증가</option>
+                </select>
+            </div>
+            <div class="buttons">
+                <button class="btn btn-cancel" onclick="hideSettings()">취소</button>
+                <button class="btn btn-save" onclick="saveProfile()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        let isLoading = false;
+        let currentUserId = localStorage.getItem('currentUserId') || null;
+
+        function showSettings() {
+            document.getElementById('settingsModal').style.display = 'flex';
+        }
+
+        function hideSettings() {
+            document.getElementById('settingsModal').style.display = 'none';
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                selectedFile = file;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('imagePreview').innerHTML = 
+                        `<div class="image-preview">
+                            <img src="${e.target.result}" alt="선택된 이미지">
+                            <button class="remove-btn" onclick="removeImage()">×</button>
+                        </div>`;
+                    // 이미지 선택 후 입력 필드에 포커스
+                    document.getElementById('messageInput').focus();
+                    document.getElementById('messageInput').placeholder = '이미지에 대한 메시지를 입력하세요...';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function removeImage() {
+            selectedFile = null;
+            document.getElementById('imagePreview').innerHTML = '';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('messageInput').placeholder = '메시지를 입력하세요...';
+        }
+
+        // 마크다운 렌더링 함수
+        function renderMarkdown(text) {
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>')
+                .replace(/^(.+)$/gm, '<p>$1</p>')
+                .replace(/<p><\/p>/g, '')
+                .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+                .replace(/(<li>.*<\/li>)/s, '<ol>$1</ol>')
+                .replace(/^- (.+)$/gm, '<li>$1</li>')
+                .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+        }
+        
+        function addMessage(text, sender, image = null) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            
+            let content = '';
+            if (image) {
+                content += `<img src="${image}" style="max-width:300px;border-radius:8px;margin-bottom:8px;display:block;">`;
+            }
+            
+            // AI 메시지는 마크다운 렌더링 적용
+            if (sender === 'ai') {
+                content += renderMarkdown(text);
+            } else {
+                content += `<div>${text}</div>`;
+            }
+            
+            messageDiv.innerHTML = `<div class="message-content">${content}</div>`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if ((!message && !selectedFile) || isLoading) return;
+            
+            // 사용자 메시지 표시 (이미지와 함께)
+            const imagePreview = selectedFile ? URL.createObjectURL(selectedFile) : null;
+            if (selectedFile && !message) {
+                addMessage('이미지를 분석해주세요.', 'user', imagePreview);
+            } else {
+                addMessage(message, 'user', imagePreview);
+            }
+            
+            // 입력 초기화
+            input.value = '';
+            const currentFile = selectedFile;
+            removeImage();
+            
+            // 로딩 상태
+            isLoading = true;
+            document.getElementById('sendBtn').disabled = true;
+            addMessage('답변을 생성하고 있습니다...', 'ai');
+            
+            try {
+                let safeUserId = currentUserId || 'user' + Date.now();
+                // 한글 이름도 그대로 사용
+                if (!safeUserId || safeUserId.trim() === '') {
+                    safeUserId = 'user' + Date.now();
+                }
+                console.log('Using user_id:', safeUserId);
+                const messageText = message || '이미지를 분석해주세요.';
+                
+                console.log('Current userId from storage:', currentUserId);
+                console.log('Sending request with:', { user_id: safeUserId, message: messageText });
+                
+                const formData = new FormData();
+                formData.append('user_id', safeUserId);
+                formData.append('message', messageText);
+                
+                if (currentFile) {
+                    formData.append('image', currentFile);
+                }
+                
+                // FormData 내용 확인
+                for (let [key, value] of formData.entries()) {
+                    console.log(key, value);
+                }
+                
+                let response;
+                if (currentFile) {
+                    // 이미지가 있으면 Form 엔드포인트 사용
+                    response = await fetch('http://3.35.165.130:8001/chat', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } else {
+                    // 텍스트만 있으면 JSON 엔드포인트 사용
+                    response = await fetch('http://3.35.165.130:8001/chat/json', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            user_id: safeUserId,
+                            message: messageText
+                        })
+                    });
+                }
+                
+                const result = await response.json();
+                
+                // 로딩 메시지 제거
+                const messages = document.getElementById('messages');
+                messages.removeChild(messages.lastChild);
+                
+                console.log('API Response:', result);
+                console.log('Result structure:', JSON.stringify(result, null, 2));
+                
+                if (result.success && result.data && result.data.response) {
+                    addMessage(result.data.response, 'ai');
+                } else if (result.success && result.data && result.data.success && result.data.response) {
+                    addMessage(result.data.response, 'ai');
+                } else {
+                    console.error('Response error:', result);
+                    addMessage(`오류: ${JSON.stringify(result.data?.error || result.message || '알 수 없는 오류가 발생했습니다.')}`, 'ai');
+                }
+            } catch (error) {
+                // 로딩 메시지 제거
+                const messages = document.getElementById('messages');
+                messages.removeChild(messages.lastChild);
+                addMessage(`서버 연결에 실패했습니다: ${error.message}`, 'ai');
+            } finally {
+                isLoading = false;
+                document.getElementById('sendBtn').disabled = false;
+            }
+        }
+
+        async function saveProfile() {
+            const name = document.getElementById('userName').value;
+            const age = document.getElementById('userAge').value;
+            const gender = document.getElementById('userGender').value;
+            const height = document.getElementById('userHeight').value;
+            const weight = document.getElementById('userWeight').value;
+            const goal = document.getElementById('userGoal').value;
+            
+            if (!name || !age || !gender || !height || !weight) {
+                alert('모든 필드를 입력해주세요.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://3.35.165.130:8001/mcp/tools/call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: 'create_user_profile',
+                        arguments: {
+                            user_id: name,
+                            name: name,
+                            age: parseInt(age),
+                            gender: gender,
+                            height: parseFloat(height),
+                            weight: parseFloat(weight),
+                            health_goal: goal
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('Profile API Response:', data);
+                
+                console.log('Full API Response:', data);
+                
+                let result;
+                if (data.content && data.content[0] && data.content[0].text) {
+                    try {
+                        result = JSON.parse(data.content[0].text);
+                    } catch (parseError) {
+                        console.error('JSON Parse Error:', parseError);
+                        throw new Error('응답 파싱 오류: ' + parseError.message);
+                    }
+                } else if (data.success !== undefined) {
+                    result = data;
+                } else {
+                    console.error('Unexpected response format:', data);
+                    throw new Error('예상하지 못한 응답 형식입니다.');
+                }
+                
+                if (result.success) {
+                    currentUserId = name;
+                    localStorage.setItem('currentUserId', name);
+                    document.querySelector('.header h1').textContent = `🤖 ${name}님의 AI PT 쌤`;
+                    alert(`프로필이 생성되었습니다!\nBMI: ${result.bmi}\n목표 칼로리: ${result.target_calories}kcal`);
+                    hideSettings();
+                    addMessage(`${name}님, 프로필 설정이 완료되었습니다! 이제 개인화된 식단 상담을 시작해보세요.`, 'ai');
+                    console.log('Profile created, currentUserId set to:', name);
+                } else {
+                    alert('프로필 생성에 실패했습니다: ' + result.error);
+                }
+            } catch (error) {
+                alert('프로필 생성 중 오류가 발생했습니다: ' + error.message);
+            }
+        }
+
+        // 초기화
+        window.onload = function() {
+            // 항상 새로운 사용자로 시작
+            addMessage('안녕하세요! AI PT 쌤입니다. 먼저 프로필을 설정해주세요. ⚙️ 버튼을 클릭하세요.', 'ai');
+        };
+    </script>
+</body>
+</html>

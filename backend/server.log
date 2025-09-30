@@ -1,0 +1,10 @@
+nohup: ignoring input
+INFO:     Will watch for changes in these directories: ['/home/ec2-user/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [51143] using StatReload
+🤖 Agentic AI Diet Coach 시작 중...
+📡 서버 주소: http://0.0.0.0:8001
+📚 API 문서: http://0.0.0.0:8001/docs
+INFO:     Started server process [51146]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
