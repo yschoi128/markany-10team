@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './App.css';
 
-const API_BASE_URL = 'http://3.35.165.130:8001';
+const API_BASE_URL = 'http://3.36.46.71:8001';
 
 function App() {
   const [messages, setMessages] = useState([]);

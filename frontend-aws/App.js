@@ -21,7 +21,7 @@ function App() {
       formData.append('user_id', 'user123');
       formData.append('message', currentInput);
       
-      const response = await fetch('http://3.35.165.130:8001/chat', {
+      const response = await fetch('http://3.36.46.71:8001/chat', {
         method: 'POST',
         mode: 'cors',
         body: formData
@@ -56,7 +56,7 @@ function App() {
           formData.append('message', '이미지를 분석해주세요');
           formData.append('image', file);
           
-          const response = await fetch('http://3.35.165.130:8001/chat', {
+          const response = await fetch('http://3.36.46.71:8001/chat', {
             method: 'POST',
             mode: 'cors',
             body: formData
