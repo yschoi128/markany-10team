@@ -2,7 +2,7 @@
   "name": "frontend-aws",
   "version": "0.1.0",
   "private": true,
-  "proxy": "http://3.35.165.130:8001",
+  "proxy": "http://3.36.46.71:8001",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
